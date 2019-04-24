@@ -23,6 +23,7 @@ extern crate serde_json;
 #[macro_use]
 extern crate log;
 
+extern crate ethereum_tx_sign;
 extern crate bitcoin;
 extern crate electrumx_client;
 extern crate hex;
@@ -30,6 +31,10 @@ extern crate itertools;
 extern crate secp256k1;
 extern crate time;
 extern crate uuid;
+extern crate tiny_keccak;
+extern crate rustc_serialize;
+extern crate ethereum_types;
+extern crate rlp;
 
 pub mod api;
 pub mod ecdsa;
