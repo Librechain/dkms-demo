@@ -1,11 +1,12 @@
-Gotham City
+Itering DKMS Demo
 =====================================
-Gotham city is a fully functional client/server application of a minimalist decentralized HD wallet using 2 party ECDSA.
+Itering DKMS is a Distributed Key Management System for helping the massive adoption of using crypto DApp. It is inspired by the working of KZen-networks's Gotham city and the proxy re-encryption design of Nucypher.
+This demo is a fully functional client/server application of a minimalist decentralized HD wallet using 2 party ECDSA, adding extra supporting for Ethereum.
 
 Supported Blockchain(s) / Coin(s)
 -------
 ### Server
-Gotham **server** is coin / blockchain agnostic but Elliptic Curve specific.
+DKMS **server** is coin / blockchain agnostic but Elliptic Curve specific.
 
 List of supported Curve(s):
 
@@ -17,6 +18,7 @@ Gotham **client** is coin / blockchain specific.
 List of supported Coin(s):
 
  * BTC
+ * Ethereum (WIP)
 
 **Extending the client to support more coin(s) is easy as long as the Elliptic Curve and signing scheme of the new blockchain are supported. In the case a blockchain is using secp256k1 together with ECDSA, the same keygen and signing code can be reused.**
 
@@ -85,8 +87,8 @@ The comparison was done on an Intel i9-8950HK (2.9GHz) using localhost for serve
 
 License
 -------
-Gotham City is released under the terms of the GPL-3.0 license. See [LICENSE](LICENSE) for more information.
+Itering DKMS Demo is released under the terms of the GPL-3.0 license. See [LICENSE](LICENSE) for more information.
 
 Contact
 -------
-For any questions, feel free to [email us](mailto:github@kzencorp.com).
+For any questions, feel free to [email us](mailto:dennywang@itering.com).
