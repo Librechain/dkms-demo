@@ -19,12 +19,18 @@ use kms::ecdsa::two_party::MasterKey2;
 use kms::ecdsa::two_party::*;
 use serde_json;
 use std::fs;
+use std::str;
 use uuid::Uuid;
-
+use rustc_serialize::hex::ToHex;
+use tiny_keccak::Keccak;
 use centipede::juggling::proof_system::{Helgamalsegmented, Proof};
 use centipede::juggling::segmentation::Msegmentation;
 use kms::chain_code::two_party::party2::ChainCode2;
-
+use ethereum_tx_sign::RawTransaction;
+use ethereum_types::{H256, U256, H128};
+use ethereum_types::H160;
+use rlp::RlpStream;
+use std::borrow::Borrow;
 use super::api;
 use super::api::PrivateShare;
 use super::ecdsa::rotate;
@@ -33,7 +39,7 @@ use super::utilities::requests;
 use curv::arithmetic::traits::Converter;
 use hex;
 use itertools::Itertools;
-use secp256k1::Signature;
+use secp256k1::{Signature, PublicKey};
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -86,6 +92,19 @@ pub struct Wallet {
     pub last_derived_pos: u32,
     pub addresses_derivation_map: HashMap<String, AddressDerivation>,
 }
+
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EthTransaction {
+    pub from: String,
+    pub to: String,
+    pub nonce: String,
+    pub gasPrice: String,
+    pub gasLimit: String,
+    pub value: String,
+    pub data: String,
+}
+
 
 impl Wallet {
     pub fn new(client_shim: &api::ClientShim, net: &String) -> Wallet {
@@ -143,7 +162,7 @@ impl Wallet {
             Helgamalsegmented,
             Proof,
             Party2Public,
-            ChainCode2,
+            BigInt,
             String,
         ) = serde_json::from_str(&data).unwrap();
         let verify = proof.verify(
@@ -232,6 +251,55 @@ impl Wallet {
 
     pub fn load() -> Wallet {
         Wallet::load_from(WALLET_FILENAME)
+    }
+
+    pub fn eth_send(&mut self, client_shim: &api::ClientShim, transaction: &EthTransaction) -> String {
+        let signed_transaction = transaction.clone();
+        let address_derivation = self
+            .addresses_derivation_map
+            .get(&transaction.from)
+            .unwrap();
+
+        let mk = &address_derivation.mk;
+        let nonce_i64: i64 = transaction.clone().nonce.parse().unwrap();
+        let gas_price_i64: i64 = transaction.clone().gasPrice.parse().unwrap();
+        let gas_limit_i64: i64 = transaction.clone().gasLimit.parse().unwrap();
+        let ca: &[u8] = &BigInt::to_vec(&BigInt::from_hex(&transaction.clone().value));
+
+        let tx = RawTransaction {
+            nonce: U256::from(nonce_i64),
+            to: serde_json::from_str(&format!("{:?}", transaction.to)).unwrap(),
+            value: U256::from(ca),
+            gas_price: U256::from(gas_price_i64),
+            gas: U256::from(gas_limit_i64),
+            data: transaction.data.clone().into_bytes(),
+        };
+
+        // kovan test chain, reference https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md
+        let chain_id: u8 = 42;
+        let transaction_str = serde_json::to_string(transaction).unwrap();
+        let sig_hash_hex = tx.hash(chain_id).to_hex();
+
+        let signature = api::sign(
+            client_shim,
+            BigInt::from_hex(&sig_hash_hex),
+            &mk,
+            BigInt::from(0),
+            BigInt::from(address_derivation.pos),
+            &self.private_share.id,
+        );
+
+        let mut tr = RlpStream::new();
+        tr.begin_unbounded_list();
+        tx.encode(&mut tr);
+        let v: u8 = chain_id * 2 + 35 + signature.recid;
+        tr.append(&v);
+        let r: Vec<u8> = signature.r.borrow().into();
+        let s: Vec<u8> = signature.s.borrow().into();
+        tr.append(&r);
+        tr.append(&s);
+        tr.complete_unbounded_list();
+        tr.out().to_hex()
     }
 
     pub fn send(
@@ -349,6 +417,30 @@ impl Wallet {
         self.last_derived_pos = pos;
 
         address
+    }
+
+    pub fn get_new_eth_address(&mut self) -> String {
+        let (pos, mk) = Self::derive_new_key(&self.private_share, self.last_derived_pos);
+        let pk = mk.public.q.get_element();
+
+        let uncompressed = pk.serialize_uncompressed();
+        // Keccak-256 public key
+        let mut sha3 = Keccak::new_keccak256();
+        let data: Vec<u8> = uncompressed[1..].iter().cloned().collect();
+        sha3.update(&data);
+        let mut res: [u8; 32] = [0; 32];
+        sha3.finalize(&mut res);
+        let resc = &res[12..];
+        let address = format!("0x{}", resc.to_hex());
+
+        self.addresses_derivation_map.insert(address.clone(), AddressDerivation { mk, pos });
+        self.last_derived_pos = pos;
+        address
+    }
+
+    pub fn get_wallet_public(&mut self) -> String {
+        let (pos, mk) = Self::derive_new_key(&self.private_share, self.last_derived_pos);
+        format!("{}", mk.public.q.get_element())
     }
 
     pub fn derived(&mut self) {

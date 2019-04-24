@@ -11,11 +11,18 @@ use super::super::routes::ecdsa;
 use super::super::Result;
 use rocksdb;
 use serde;
+use redis;
+use std::collections::HashMap;
+use serde_json::Value;
+use rusoto_dynamodb::AttributeValue;
+use std::collections::hash_map::RandomState;
+use redis::Commands;
 
 use super::aws;
 
 pub enum DB {
     Local(rocksdb::DB),
+    Redis(redis::Client),
     AWS(rusoto_dynamodb::DynamoDbClient, String),
 }
 
@@ -68,6 +75,16 @@ where
             rocksdb_client.put(identifier.as_ref(), v_string.as_ref())?;
             Ok(())
         }
+        DB::Redis(redis_client) => {
+            let identifier = idify(user_id, id, name);
+            let v_string = serde_json::to_string(&v).unwrap();
+            let connect = redis_client.get_connection()?;
+            let res: String = connect.set(identifier, v_string)?;
+            if res != "OK" {
+                panic!("Set Redis Data Err")
+            }
+            Ok(())
+        }
     }
 }
 
@@ -91,6 +108,13 @@ where
                 Some(vec) => Ok(serde_json::from_slice(&vec).unwrap()),
                 None => Ok(None),
             }
+        }
+        DB::Redis(redis_client) => {
+            let identifier = idify(user_id, id, name);
+            let connect = redis_client.get_connection()?;
+            let old_val: String = connect.get(identifier)?;
+            let res: Value = serde_json::from_str(&old_val)?;
+            Ok(serde_json::from_value(res).unwrap())
         }
     }
 }
